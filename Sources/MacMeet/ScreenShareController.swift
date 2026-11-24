@@ -35,6 +35,9 @@ final class ScreenShareController: NSObject, ObservableObject, WKScriptMessageHa
   }
 
   @Published private(set) var pickerRequest: PickerRequest?
+  /// Preview images for the current `pickerRequest`'s sources, keyed by `Source.id`, filled in
+  /// as each one finishes capturing.
+  @Published private(set) var thumbnails: [String: NSImage] = [:]
 
   weak var webView: WKWebView?
   private var session: ScreenCaptureSession?
@@ -201,20 +204,70 @@ final class ScreenShareController: NSObject, ObservableObject, WKScriptMessageHa
 
     do {
       let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
-      pickerRequest = PickerRequest(
+      let request = PickerRequest(
         displays: content.displays.map(Self.source(for:)),
         windows: content.windows.filter(Self.isShareable).map(Self.source(for:))
           .sorted { ($0.subtitle, $0.title) < ($1.subtitle, $1.title) },
         frameRate: frameRate
       )
+      thumbnails = [:]
+      pickerRequest = request
+      loadThumbnails(for: request)
     } catch {
       reject("NotReadableError", error.localizedDescription)
     }
   }
 
+  /// Captures a still preview of every source in the request, publishing each as it finishes so
+  /// the picker can fill thumbnails in progressively rather than waiting on all of them.
+  private func loadThumbnails(for request: PickerRequest) {
+    for source in request.displays + request.windows {
+      Task {
+        guard let image = await Self.captureThumbnail(for: source), pickerRequest?.id == request.id else { return }
+        thumbnails[source.id] = image
+      }
+    }
+  }
+
+  private static func captureThumbnail(for source: Source) async -> NSImage? {
+    let filter: SCContentFilter
+    let contentSize: CGSize
+    switch source.content {
+    case .display(let display):
+      filter = SCContentFilter(display: display, excludingWindows: [])
+      contentSize = CGSize(width: display.width, height: display.height)
+    case .window(let window):
+      filter = SCContentFilter(desktopIndependentWindow: window)
+      contentSize = window.frame.size
+    }
+
+    let size = thumbnailSize(for: contentSize)
+    let configuration = SCStreamConfiguration()
+    configuration.width = Int(size.width)
+    configuration.height = Int(size.height)
+    configuration.showsCursor = false
+    configuration.scalesToFit = true
+
+    guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+    else { return nil }
+    return NSImage(cgImage: image, size: size)
+  }
+
+  /// Scales a source's own size down to a thumbnail no larger than 320×200, preserving aspect ratio.
+  private static func thumbnailSize(for contentSize: CGSize) -> CGSize {
+    let maxSize = CGSize(width: 320, height: 200)
+    guard contentSize.width > 0, contentSize.height > 0 else { return maxSize }
+    let scale = min(maxSize.width / contentSize.width, maxSize.height / contentSize.height, 1)
+    return CGSize(
+      width: max(2, (contentSize.width * scale).rounded()),
+      height: max(2, (contentSize.height * scale).rounded())
+    )
+  }
+
   func share(_ source: Source) {
     guard let request = pickerRequest else { return }
     pickerRequest = nil
+    thumbnails = [:]
     stopCapture(notifyPage: false)
 
     let filter: SCContentFilter
@@ -264,6 +317,7 @@ final class ScreenShareController: NSObject, ObservableObject, WKScriptMessageHa
   func cancelPicker() {
     guard pickerRequest != nil else { return }
     pickerRequest = nil
+    thumbnails = [:]
     // Meet treats a request as cancelled by the user only when it fails the way Safari's does:
     // a NotAllowedError with exactly WebKit's message. Any other error makes it show "Something
     // went wrong" or its permission instructions.
@@ -276,6 +330,7 @@ final class ScreenShareController: NSObject, ObservableObject, WKScriptMessageHa
   /// A navigation replaces the page, and with it the script's state, so drop any share.
   func pageDidNavigate() {
     pickerRequest = nil
+    thumbnails = [:]
     stopCapture(notifyPage: false)
   }
 
