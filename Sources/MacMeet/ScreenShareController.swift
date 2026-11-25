@@ -212,7 +212,10 @@ final class ScreenShareController: NSObject, ObservableObject, WKScriptMessageHa
       )
       thumbnails = [:]
       pickerRequest = request
-      loadThumbnails(for: request)
+      // The list picker has nowhere to show them.
+      if AppController.shared.screenSharePickerStyle == .previews {
+        loadThumbnails(for: request)
+      }
     } catch {
       reject("NotReadableError", error.localizedDescription)
     }

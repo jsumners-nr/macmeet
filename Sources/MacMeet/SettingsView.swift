@@ -2,6 +2,34 @@ import KeyboardShortcuts
 import SwiftUI
 
 struct SettingsView: View {
+  var body: some View {
+    TabView {
+      GeneralSettings()
+        .tabItem { Label("General", systemImage: "gearshape") }
+      MeetingSettings()
+        .tabItem { Label("Meetings", systemImage: "video") }
+      ShortcutSettings()
+        .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+      TroubleshootingSettings()
+        .tabItem { Label("Troubleshooting", systemImage: "ladybug") }
+    }
+  }
+}
+
+/// Lays out one settings tab as a grouped form sized to its content, so the window fits each tab.
+private struct SettingsTab<Content: View>: View {
+  @ViewBuilder let content: Content
+
+  var body: some View {
+    Form { content }
+      .formStyle(.grouped)
+      .frame(width: 460)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+}
+
+/// What happens to the window and the app when the window is closed.
+private struct GeneralSettings: View {
   @ObservedObject private var app = AppController.shared
 
   private var keepsRunning: Bool { app.closeBehavior == .keepRunning }
@@ -14,7 +42,7 @@ struct SettingsView: View {
   }
 
   var body: some View {
-    Form {
+    SettingsTab {
       Section {
         Picker("When the main window is closed", selection: $app.closeBehavior) {
           Text("Quit MacMeet").tag(AppController.CloseBehavior.quit)
@@ -43,7 +71,16 @@ struct SettingsView: View {
             .foregroundStyle(.secondary)
         }
       }
+    }
+  }
+}
 
+/// How MacMeet sets up a call: the mic and camera on joining, and the screen share picker.
+private struct MeetingSettings: View {
+  @ObservedObject private var app = AppController.shared
+
+  var body: some View {
+    SettingsTab {
       Section {
         Toggle("Mute microphone", isOn: $app.muteMicrophoneOnJoin)
         Toggle("Turn off camera", isOn: $app.turnOffCameraOnJoin)
@@ -55,6 +92,31 @@ struct SettingsView: View {
           .foregroundStyle(.secondary)
       }
 
+      Section {
+        Picker("Screen share picker", selection: $app.screenSharePickerStyle) {
+          Text("Previews").tag(AppController.ScreenSharePickerStyle.previews)
+          Text("List").tag(AppController.ScreenSharePickerStyle.list)
+        }
+        .pickerStyle(.radioGroup)
+        .labelsHidden()
+      } header: {
+        Text("Screen share picker")
+      } footer: {
+        Text(app.screenSharePickerStyle == .previews
+          ? "Shows a thumbnail of each screen and window, and outlines the one you select."
+          : "Lists screens and windows by name.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+}
+
+private struct ShortcutSettings: View {
+  @ObservedObject private var app = AppController.shared
+
+  var body: some View {
+    SettingsTab {
       Section {
         Toggle("Use system-wide hotkeys for mute and camera", isOn: $app.useSystemWideHotkeys)
         KeyboardShortcuts.Recorder("Mute/unmute microphone:", name: .toggleMicrophone)
@@ -68,7 +130,15 @@ struct SettingsView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
+    }
+  }
+}
 
+private struct TroubleshootingSettings: View {
+  @ObservedObject private var app = AppController.shared
+
+  var body: some View {
+    SettingsTab {
       Section {
         Toggle("Record debug log", isOn: $app.debugLogging)
         Button("Show Log in Finder") { app.showDebugLog() }
@@ -80,8 +150,5 @@ struct SettingsView: View {
           .foregroundStyle(.secondary)
       }
     }
-    .formStyle(.grouped)
-    .frame(width: 440)
-    .fixedSize(horizontal: false, vertical: true)
   }
 }

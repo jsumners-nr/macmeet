@@ -15,6 +15,15 @@ final class AppController: NSObject, ObservableObject {
     var id: Self { self }
   }
 
+  enum ScreenSharePickerStyle: String, CaseIterable, Identifiable {
+    /// A grid of thumbnails under Entire Screen / Window tabs, outlining the selection on screen.
+    case previews
+    /// The original plain list of displays and windows by name.
+    case list
+
+    var id: Self { self }
+  }
+
   private enum Key {
     static let closeBehavior = "closeBehavior"
     static let keepInDock = "keepInDock"
@@ -23,6 +32,7 @@ final class AppController: NSObject, ObservableObject {
     static let asksBeforeLeavingOnClose = "asksBeforeLeavingOnClose"
     static let muteMicrophoneOnJoin = "muteMicrophoneOnJoin"
     static let turnOffCameraOnJoin = "turnOffCameraOnJoin"
+    static let screenSharePickerStyle = "screenSharePickerStyle"
   }
 
   private let defaults = UserDefaults.standard
@@ -74,6 +84,11 @@ final class AppController: NSObject, ObservableObject {
     didSet { defaults.set(turnOffCameraOnJoin, forKey: Key.turnOffCameraOnJoin) }
   }
 
+  /// Which screen share picker to show when Meet asks to share the screen.
+  @Published var screenSharePickerStyle: ScreenSharePickerStyle {
+    didSet { defaults.set(screenSharePickerStyle.rawValue, forKey: Key.screenSharePickerStyle) }
+  }
+
   /// Set while closing the window quits the app, so applicationShouldTerminate can skip its prompt
   /// when `asksBeforeLeavingOnClose` is off.
   private(set) var isQuittingFromWindowClose = false
@@ -103,6 +118,7 @@ final class AppController: NSObject, ObservableObject {
       Key.asksBeforeLeavingOnClose: true,
       Key.muteMicrophoneOnJoin: false,
       Key.turnOffCameraOnJoin: false,
+      Key.screenSharePickerStyle: ScreenSharePickerStyle.previews.rawValue,
     ])
     closeBehavior = CloseBehavior(rawValue: defaults.string(forKey: Key.closeBehavior) ?? "") ?? .keepRunning
     keepInDock = defaults.bool(forKey: Key.keepInDock)
@@ -112,6 +128,9 @@ final class AppController: NSObject, ObservableObject {
     asksBeforeLeavingOnClose = defaults.bool(forKey: Key.asksBeforeLeavingOnClose)
     muteMicrophoneOnJoin = defaults.bool(forKey: Key.muteMicrophoneOnJoin)
     turnOffCameraOnJoin = defaults.bool(forKey: Key.turnOffCameraOnJoin)
+    screenSharePickerStyle = ScreenSharePickerStyle(
+      rawValue: defaults.string(forKey: Key.screenSharePickerStyle) ?? ""
+    ) ?? .previews
     super.init()
 
     KeyboardShortcuts.onKeyDown(for: .toggleMicrophone) { [weak self] in

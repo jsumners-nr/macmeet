@@ -108,11 +108,20 @@ struct ContentView: View {
         JoinMeetingView { code in meet.join(code) }
       }
       .sheet(item: screenSharePicker) { request in
-        ScreenSharePicker(
-          request: request,
-          onShare: { screenShare.share($0) },
-          onCancel: { screenShare.cancelPicker() }
-        )
+        switch app.screenSharePickerStyle {
+        case .previews:
+          ScreenSharePicker(
+            request: request,
+            onShare: { screenShare.share($0) },
+            onCancel: { screenShare.cancelPicker() }
+          )
+        case .list:
+          ScreenShareListPicker(
+            request: request,
+            onShare: { screenShare.share($0) },
+            onCancel: { screenShare.cancelPicker() }
+          )
+        }
       }
   }
 }
