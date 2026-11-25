@@ -122,16 +122,29 @@ final class AppController: NSObject, ObservableObject {
       guard self?.useSystemWideHotkeys == true else { return }
       MeetController.shared.toggleCamera()
     }
+
+    // See showWindow. By the time the user switches away, the window has settled on its Space.
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.didResignActiveNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { _ = self?.window.collectionBehavior.remove(.moveToActiveSpace) }
+    }
   }
 
   // MARK: - Actions
 
   func showWindow() {
     // A hidden window remembers the Space it was closed on. Bring it to the current Space
-    // instead; windowDidBecomeKey drops this so a visible window stays where the user puts it.
+    // instead, and drop this once the app resigns active so a visible window stays where the user
+    // puts it. Dropping it any sooner is too early when the app is already active, as it is when
+    // another app hands it a meeting link: the window becomes key as it's ordered in, before it
+    // has moved, and stays on its old Space.
     if !window.isVisible {
       window.collectionBehavior.insert(.moveToActiveSpace)
     }
+    DebugLog.write("Showing window (visible: \(window.isVisible), app active: \(NSApp.isActive))")
     isWindowVisible = true
     applyPresence()
     NSApp.activate()
@@ -140,6 +153,9 @@ final class AppController: NSObject, ObservableObject {
     // be activated until later, and makeKeyAndOrderFront alone leaves its window behind the
     // active app's. Raise the window over every app's windows regardless.
     window.orderFrontRegardless()
+    DispatchQueue.main.async { [window] in
+      DebugLog.write("Window shown, on the current Space: \(window.isOnActiveSpace)")
+    }
   }
 
   func newMeeting() {
@@ -254,10 +270,6 @@ extension AppController: NSWindowDelegate {
       applyPresence()
     }
     return false
-  }
-
-  func windowDidBecomeKey(_ notification: Notification) {
-    window.collectionBehavior.remove(.moveToActiveSpace)
   }
 
   /// Returns true when there's no meeting to leave, or the user agrees to leave it.
